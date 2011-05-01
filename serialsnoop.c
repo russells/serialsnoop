@@ -197,6 +197,9 @@ write_data(struct port *p)
 			myname, ret, p->name);
 		break;
 	}
+	fprintf(stderr, "   -V|--version\n");
+	fprintf(stderr, "   portparams defaults to 1200E71\n");
+	exit(1);
 }
 
 
@@ -211,20 +214,21 @@ port_params(char *params)
 	if (0 != ret) {
 		static char buf[1024];
 		regerror(ret, &port_reg, buf, 1024);
-		fprintf(stderr, "%s: Cannot compile regex \"%s\": %s\n", myname,
-			port_par_regex, buf);
+		fprintf(stderr, "%s: Cannot compile regex \"%s\": %s\n",
+			myname, port_par_regex, buf);
 		exit(2);
 	}
 
 	regmatch_t matches[5];
 	ret = regexec(&port_reg, params, 5, matches, 0);
 	if (0 != ret) {
-		fprintf(stderr, "%s: \"%s\" is not a port params string.\n", myname, params);
+		fprintf(stderr, "%s: \"%s\" is not a port params string.\n",
+			myname, params);
 		exit(2);
 	}
 
-	/* matches[0] will be filled in because the whole regex has matched.  So
-	   search for the other matches. */
+	/* matches[0] will be filled in because the whole regex has matched.
+	   So search for the other matches. */
 
 	int start = matches[1].rm_so;
 	int end   = matches[1].rm_eo;
@@ -263,8 +267,8 @@ port_params(char *params)
 		exit(2);
 	}
 
-	/* Hmm, we might never see these error checks, because they won't get matched
-	   by the regex above... */
+	/* Hmm, we might never see these error checks, because they won't get
+	   matched by the regex above... */
 
 	if (-1 == matches[2].rm_so) {
 		port_parity = 'E';
@@ -280,8 +284,10 @@ port_params(char *params)
 			port_parity = 'O';
 			break;
 		default:
-			fprintf(stderr, "%s: Strange parity character %c (0x%02x)\n",
-				myname, params[matches[2].rm_so], params[matches[2].rm_so]);
+			fprintf(stderr,
+				"%s: Strange parity character %c (0x%02x)\n",
+				myname, params[matches[2].rm_so],
+				params[matches[2].rm_so]);
 			exit(2);
 		}
 	}
@@ -294,7 +300,8 @@ port_params(char *params)
 		port_bits = 8;
 	} else {
 		fprintf(stderr, "%s: Strange data bits character %c (0x%02x)\n",
-			myname, params[matches[3].rm_so], params[matches[3].rm_so]);
+			myname, params[matches[3].rm_so],
+			params[matches[3].rm_so]);
 		exit(2);
 	}
 
@@ -306,7 +313,8 @@ port_params(char *params)
 		port_stopbits = 2;
 	} else {
 		fprintf(stderr, "%s: Strange stop bits character %c (0x%02x)\n",
-			myname, params[matches[4].rm_so], params[matches[4].rm_so]);
+			myname, params[matches[4].rm_so],
+			params[matches[4].rm_so]);
 		exit(2);
 	}
 }
@@ -350,8 +358,8 @@ setup_port(struct port *p)
 	cfmakeraw(&p->t1);
 	ret = cfsetispeed(&p->t1, port_baud);
 	if (-1 == ret) {
-		fprintf(stderr, "%s: cannot set %s speed to %s: %s\n", myname, p->name,
-			port_baud_string, strerror(errno));
+		fprintf(stderr, "%s: cannot set %s speed to %s: %s\n",
+			myname, p->name, port_baud_string, strerror(errno));
 		exit(2);
 	}
 
@@ -379,8 +387,8 @@ setup_port(struct port *p)
 
 	ret = tcsetattr(p->fd, TCSANOW, &p->t1);
 	if (-1 == ret) {
-		fprintf(stderr, "%s: cannot set port parameters for %s: %s\n", myname,
-			p->name, strerror(errno));
+		fprintf(stderr, "%s: cannot set port parameters for %s: %s\n",
+			myname, p->name, strerror(errno));
 		exit(2);
 	}
 
@@ -412,9 +420,7 @@ print_trailer(void)
 		break;
 	case outXML:
 		printf(" </data>\n</capture>\n");
-		break;
 	}
-	fflush(stdout);
 }
 
 
@@ -431,28 +437,35 @@ print_byte(struct port *p, unsigned char c)
 	tm = gmtime(&(t.tv_sec));
 	strftime(timestring, 199, SS_TIME_FORMAT, tm);
 
-	/* The output here should be done in a single printf, to try to make it a
-	   single write. */
+	/* The output here should be done in a single printf, to try to make it
+	   a single write. */
 	switch (outputformat) {
 	case outTEXT:
 		if (isprint(c))
-			printf("%d %s %d.%06d 0x%02x %c\n", p->number, timestring,
-			       (int)tdiff.tv_sec, (int)tdiff.tv_usec, c, c);
+			printf("%d %s %d.%06d 0x%02x %c\n", p->number,
+			       timestring, (int)tdiff.tv_sec,
+			       (int)tdiff.tv_usec, c, c);
 		else
-			printf("%d %s %d.%06d 0x%02x\n", p->number, timestring,
-			       (int)tdiff.tv_sec, (int)tdiff.tv_usec, c);
+			printf("%d %s %d.%06d 0x%02x\n", p->number,
+			       timestring, (int)tdiff.tv_sec,
+			       (int)tdiff.tv_usec, c);
 		break;
 	case outXML:
 		if (isprint(c))
-			printf("  <byte line='%d' time='%d.%06d' value='0x%02x' ascii='%c' />\n",
-			       p->number, (int)tdiff.tv_sec, (int)tdiff.tv_usec, c, c);
+			printf("  <byte line='%d' time='%d.%06d' "
+			       "value='0x%02x' ascii='%c' />\n",
+			       p->number, (int)tdiff.tv_sec,
+			       (int)tdiff.tv_usec, c, c);
 		else
-			printf("  <byte line='%d' time='%d.%06d' value='0x%02x' />\n", p->number,
-			       (int)tdiff.tv_sec, (int)tdiff.tv_usec, c);
+			printf("  <byte line='%d' time='%d.%06d' "
+			       "value='0x%02x' />\n",
+			       p->number, (int)tdiff.tv_sec,
+			       (int)tdiff.tv_usec, c);
 		break;
 	}
 	fflush(stdout);
 }
+
 
 static void
 read_data(struct port *p)
@@ -474,14 +487,15 @@ read_data(struct port *p)
 			if (EWOULDBLOCK == errno) {
 				break;
 			} else {
-				fprintf(stderr, "Error reading %s: %s\n", p->name, strerror(errno));
+				fprintf(stderr, "Error reading %s: %s\n",
+					p->name, strerror(errno));
 				exit(2);
 			}
 		} else {
-			fprintf(stderr, "Strange return from reading %s: %d\n", p->name, nread);
+			fprintf(stderr, "Strange return from reading %s: %d\n",
+				p->name, nread);
 		}
 	}
-
 }
 
 
@@ -565,16 +579,18 @@ mainloop(void)
 		case -1:
 			switch (selecterr) {
 			case EINTR:
-				/* A question here: after the signal handler writes to the pipe, is the
-				   pipe always ready for reading when we return EINTR from select()?
-				   It seems to work in a couple of tests, but is this guaranteed?  */
+				/* A question here: after the signal handler
+				   writes to the pipe, is the pipe always ready
+				   for reading when we return EINTR from
+				   select()?  It seems to work in a couple of
+				   tests, but is this guaranteed?  */
 				if (FD_ISSET(signal_pipe[0], &rfds)) {
 					print_trailer();
 					exit(0);
 				}
 			default:
-				fprintf(stderr, "%s: error in select(): %s\n", myname,
-					strerror(selecterr));
+				fprintf(stderr, "%s: error in select(): %s\n",
+					myname, strerror(selecterr));
 				exit(2);
 				break;
 			}
@@ -616,7 +632,8 @@ setup_signal_handler(void)
 
 	ret = pipe(signal_pipe);
 	if (-1 ==ret) {
-		fprintf(stderr, "%s: Cannot create pipe: %s\n", myname, strerror(errno));
+		fprintf(stderr, "%s: Cannot create pipe: %s\n",
+			myname, strerror(errno));
 		exit(2);
 	}
 	signal(SIGINT, sigint_handler);
