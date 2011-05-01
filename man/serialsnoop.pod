@@ -1,0 +1,69 @@
+=head1 NAME
+
+serialsnoop - monitor serial ports.
+
+=head1 SYNOPSIS
+
+B<serialsnoop> [options] port0 port1
+
+B<serialsnoop> -V
+
+=head1 DESCRIPTION
+
+B<serialsnoop> monitors two way serial (RS232) communications using local
+serial ports.
+
+=head1 OPTIONS
+
+=over
+
+=item --port I<portparams>
+
+=item -p I<portparams>
+
+Set the serial port parameters to that specified in I<portparams>.  The format
+is C<RPBS>, where C<R> is a baud rate, C<P> is parity (O, E or N), C<B> is the
+number of data bits, and C<S> is the number of stop bits (1 or 2).
+
+If not specified, I<portparams> defaults to C<1200E71>.
+
+=item -f text|xml
+
+=item --format text|xml
+
+Specifies the output format.  Defaults to text.
+
+=item -V
+
+=item --version
+
+Print the B<serialsnoop> version and exit.
+
+=item port0 port1
+
+I<port0> and I<port1> are the serial ports used for monitoring.  They will
+normally be something like F</dev/ttyS0> or F</dev/ttyUSB0> (on Linux.)
+
+=back
+
+=head1 EXAMPLES
+
+=over
+
+=item Monitor serial comms using /dev/ttyUSB0 and /dev/ttyUSB1
+
+ serialsnoop -p 9600N81 /dev/ttyUSB0 /dev/ttyUSB1
+
+=back
+
+=head1 AUTHOR
+
+Russell Steicke <russells@adelie.cx>
+
+=head1 VERSION
+
+0.5.0
+
+=head1 SEE ALSO
+
+setserial(1), stty(1).
