@@ -20,5 +20,5 @@ man/serialsnoop.1: man/serialsnoop.pod
 
 
 clean:
-	rm -f serialsnoop.o serialsnoop version.h
+	rm -f serialsnoop.o serialsnoop version.h man/serialsnoop.1
 
