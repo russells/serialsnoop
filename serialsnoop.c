@@ -144,7 +144,8 @@ port_params(char *params)
 			port_parity = 'O';
 			break;
 		default:
-			fprintf(stderr, "%s: Strange parity character %c (0x%02x)\n",
+			fprintf(stderr,
+				"%s: Strange parity character %c (0x%02x)\n",
 				myname, params[matches[2].rm_so],
 				params[matches[2].rm_so]);
 			exit(2);
