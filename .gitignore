@@ -1,0 +1,5 @@
+*.o
+*~
+.*.swp
+serialsnoop
+version.h

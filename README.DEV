@@ -1,0 +1,13 @@
+Serial programming guide:
+
+  http://www.easysw.com/~mike/serial/
+
+Man pages:
+
+  termios(3)
+  tty_ioctl(4)
+
+Ioctl for modem lines:
+
+  TIOCMGET
+

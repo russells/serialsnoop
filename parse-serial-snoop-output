@@ -1,0 +1,98 @@
+#!/usr/bin/awk -f
+
+
+function char_to_printable(d4,d5) {
+	if (d5 != "") {
+		return d5;
+	} else if (d4 == "0x20") {
+		return " ";
+	} else {
+		return "";
+	}
+}
+
+
+function control_to_printable(d4) {
+	if (d4 == "0x01") {
+		return "!A";
+	} else if (d4 == "0x02") {
+		return "!B";
+	} else if (d4 == "0x03") {
+		return "!C";
+	} else if (d4 == "0x04") {
+		return "!D";
+	} else if (d4 == "0x05") {
+		return "!E";
+	} else if (d4 == "0x06") {
+		return "!F";
+	} else if (d4 == "0x09") {
+		return "!I (TAB)";
+	} else if (d4 == "0x0a") {
+		return "!J (LF)";
+	} else if (d4 == "0x0d") {
+		return "!M (CR)";
+	} else {
+		return d4;
+	}
+}
+
+
+BEGIN {
+	inline= -1;
+	lastdatatime = 0;
+}
+
+# { print "line \"" $0 "\" inline==" inline " d1==" $1 "\n"; }
+
+/^[01] / {
+
+	# This data is from the same port as the line we are printing.
+	if (inline == $1) {
+		thisdatatime = $3;
+		if ((thisdatatime - lastdatatime) > 5) {
+			printf("\n");
+			inline = -1;
+		} else {
+			lastdatatime = thisdatatime;
+			printthischar = char_to_printable($4, $5);
+			if ("" != printthischar) {
+				printf("%s", printthischar);
+				fflush();
+				next;
+			}
+		}
+	}
+
+	if (inline != -1) {
+		# This data is from the other port, so terminate the previous line.
+		printf("\n");
+		fflush();
+	}
+	# Print the first part.
+	if ($1 == "0") {
+		printf("0 >>> ");
+	} else {
+		printf("1 ... ");
+	}
+	printf("%s ", $2);
+	fflush();
+	printthischar = char_to_printable($4, $5);
+	if (printthischar != "") {
+		printf("     %s", printthischar);
+		fflush();
+		inline = $1;
+		lastdatatime = $3;
+	} else {
+		printf("%s\n", control_to_printable($4));
+		fflush();
+		inline = -1;
+	}
+	next;
+}
+
+# Default: print the whole line.
+{
+	print $0;
+	fflush();
+}
+
