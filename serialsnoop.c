@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -22,16 +23,47 @@
 #define SS_TIME_FORMAT "%Y-%m-%dT%H:%M:%S"
 
 
+struct controlline {
+  int mask;
+  char name[4];
+};
+
+
 struct port {
   int number;
+  char *devname;
   char *name;
   int fd;
   struct termios t1;
   struct termios t2;
+  int lines;
+  int lines_prev;
+  int controllinemask;
+  struct controlline *controllines;
 };
 
 static struct port port0;
 static struct port port1;
+
+static struct controlline controllines0[] = {
+  { TIOCM_CAR, "DCD" },
+  { TIOCM_CTS, "CTS" },
+  { TIOCM_DSR, "DSR" },
+  { TIOCM_RI , "RNG" },
+  { 0        , ""    },
+
+};
+#define PORT_0_CONTROL_MASK ( TIOCM_CAR | TIOCM_CTS | TIOCM_DSR | TIOCM_RI )
+
+/* The masks don't match the names here, because we are monitoring DTE output
+   lines using DTE input lines. */
+static struct controlline controllines1[] = {
+  { TIOCM_DSR, "DTR" },
+  { TIOCM_CTS, "RTS" },
+  { 0        , ""    },
+};
+#define PORT_1_CONTROL_MASK ( TIOCM_DSR | TIOCM_CTS )
+
 
 static char *myname;
 static int port_baud = B1200;
@@ -59,6 +91,8 @@ usage(void)
   fprintf(stderr, "   -f|--format text|xml\n");
   fprintf(stderr, "   -V|--version\n");
   fprintf(stderr, "   portparams defaults to 1200E71\n");
+  fprintf(stderr, "   port 0 must be connected to the DCE monitor port\n");
+  fprintf(stderr, "   port 1 must be connected to the DTE monitor port\n");
   exit(1);
 }
 
@@ -176,6 +210,22 @@ port_params(char *params)
 
 
 static void
+get_control_lines(struct port *port)
+{
+  int ret;
+
+  port->lines_prev = port->lines;
+  ret = ioctl(port->fd, TIOCMGET, &(port->lines));
+  if (-1 == ret) {
+    fprintf(stderr, "Cannot read lines for port %d (%s): %s\n",
+            port->number, port->name, strerror(errno));
+  } else {
+    port->lines &= port->controllinemask;
+  }
+}
+
+
+static void
 open_ports(void)
 {
   if (ssdebug) fprintf(stderr, "Opening %s\n", port0.name);
@@ -265,19 +315,19 @@ print_byte(struct port *p, unsigned char c)
   switch (outputformat) {
   case outTEXT:
     if (isprint(c))
-      printf("%d %s %d.%06d 0x%02x %c\n", p->number, timestring,
+      printf("%s %s %d.%06d 0x%02x %c\n", p->devname, timestring,
              (int)tdiff.tv_sec, (int)tdiff.tv_usec, c, c);
     else
-      printf("%d %s %d.%06d 0x%02x\n", p->number, timestring,
+      printf("%s %s %d.%06d 0x%02x\n", p->devname, timestring,
              (int)tdiff.tv_sec, (int)tdiff.tv_usec, c);
     break;
   case outXML:
     if (isprint(c))
-      printf("  <byte line='%d' time='%d.%06d' value='0x%02x' ascii='%c' />\n",
-             p->number, (int)tdiff.tv_sec, (int)tdiff.tv_usec, c, c);
+      printf("  <byte source='%s' time='%d.%06d' value='0x%02x' ascii='%c' />\n",
+             p->devname, (int)tdiff.tv_sec, (int)tdiff.tv_usec, c, c);
     else
-      printf("  <byte line='%d' time='%d.%06d' value='0x%02x' />\n", p->number,
-             (int)tdiff.tv_sec, (int)tdiff.tv_usec, c);
+      printf("  <byte source='%s' time='%d.%06d' value='0x%02x' />\n",
+             p->devname, (int)tdiff.tv_sec, (int)tdiff.tv_usec, c);
     break;
   }
   fflush(stdout);
@@ -363,6 +413,75 @@ print_trailer(void)
 }
 
 
+static void
+print_control_line(struct port *port,
+                   struct controlline *controlline,
+                   int state)
+{
+  struct timeval t;
+  struct tm *tm;
+  struct timeval tdiff;
+  char timestring[200];
+  char line_state_char;
+  char *line_state_string;
+
+  gettimeofday(&t, 0);
+  timersub(&t, &starttime, &tdiff);
+  tm = gmtime(&(t.tv_sec));
+  strftime(timestring, 199, SS_TIME_FORMAT, tm);
+  if (state) {
+    line_state_char = '+';
+    line_state_string = "ON";
+  } else {
+    line_state_char = '-';
+    line_state_string = "OFF";
+  }
+
+  switch (outputformat) {
+  case outTEXT:
+    printf("%d %s %d.%06d %c%s\n", port->number, timestring,
+           (int)tdiff.tv_sec, (int)tdiff.tv_usec,
+           line_state_char, controlline->name);
+    break;
+  case outXML:
+      printf("  <control name='%s' time='%d.%06d' state='%s' />\n",
+             controlline->name,
+             (int)tdiff.tv_sec, (int)tdiff.tv_usec,
+             line_state_string);
+    break;
+  }
+}
+
+static void
+maybe_print_control_lines(struct port *port)
+{
+  struct controlline *controlline;
+
+  /* printf("port %d: lines=%d lines_prev=%d\n", port->number, port->lines, port->lines_prev); */
+  if (port->lines != port->lines_prev) {
+    controlline = port->controllines;
+    printf("  mask=%d\n", controlline->mask);
+    while (controlline->mask) {
+      int state      = port->lines      & controlline->mask;
+      int state_prev = port->lines_prev & controlline->mask;
+      /* printf("   %s: mask=%d state=%d state_prev=%d\n", controlline->name, controlline->mask, state, state_prev); */
+      if (state != state_prev)
+        print_control_line(port, controlline, state);
+      controlline++;
+    }
+  }
+}
+
+
+static void
+read_control_lines(void)
+{
+  get_control_lines(&port0);
+  get_control_lines(&port1);
+  maybe_print_control_lines(&port0);
+  maybe_print_control_lines(&port1);
+}
+
 
 static void
 mainloop(void)
@@ -388,7 +507,7 @@ mainloop(void)
     FD_SET(signal_pipe[0], &rfds);
     if (signal_pipe[0] >= maxfdp1) maxfdp1 = signal_pipe[0] + 1;
     timeout.tv_sec = 0;
-    timeout.tv_usec = 10000;
+    timeout.tv_usec = 10000; /* 10ms per call */
 
     ret = select(maxfdp1, &rfds, &wfds, &xfds, &timeout);
     selecterr = errno;
@@ -409,7 +528,10 @@ mainloop(void)
         exit(2);
         break;
       }
+      break;
     default:
+      /* Read serial port control lines. */
+      read_control_lines();
       /* Handle file descriptors. */
       if (FD_ISSET(port0.fd, &rfds)) {
         read_data(&port0);
@@ -417,9 +539,10 @@ mainloop(void)
       if (FD_ISSET(port1.fd, &rfds)) {
         read_data(&port1);
       }
-      /*FALLTHROUGH*/
+      break;
     case 0:
       /* Read serial port control lines. */
+      read_control_lines();
       break;
     }
   }
@@ -499,9 +622,16 @@ main(int argc, char **argv)
     usage();
   }
   port0.number = 0;
+  port0.devname = "DCE";
   port0.name = argv[optind];
+  port0.lines = 0;
+  port0.controllines = controllines0;
+
   port1.number = 1;
+  port1.devname = "DTE";
   port1.name = argv[optind+1];
+  port1.lines = 0;
+  port1.controllines = controllines1;
 
   open_ports();
   setup_ports();

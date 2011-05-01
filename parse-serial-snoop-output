@@ -38,20 +38,20 @@ function control_to_printable(d4) {
 
 
 BEGIN {
-	inline= -1;
+	inline= "";
 	lastdatatime = 0;
 }
 
 # { print "line \"" $0 "\" inline==" inline " d1==" $1 "\n"; }
 
-/^[01] / {
+/^D[CT]E / {
 
 	# This data is from the same port as the line we are printing.
 	if (inline == $1) {
 		thisdatatime = $3;
 		if ((thisdatatime - lastdatatime) > 5) {
 			printf("\n");
-			inline = -1;
+			inline = "";
 		} else {
 			lastdatatime = thisdatatime;
 			printthischar = char_to_printable($4, $5);
@@ -63,16 +63,16 @@ BEGIN {
 		}
 	}
 
-	if (inline != -1) {
+	if (inline != "") {
 		# This data is from the other port, so terminate the previous line.
 		printf("\n");
 		fflush();
 	}
 	# Print the first part.
-	if ($1 == "0") {
-		printf("0 >>> ");
+	if ($1 == "DCE") {
+		printf("DCE >>> ");
 	} else {
-		printf("1 ... ");
+		printf("DTE <<< ");
 	}
 	printf("%s ", $2);
 	fflush();
@@ -85,9 +85,21 @@ BEGIN {
 	} else {
 		printf("%s\n", control_to_printable($4));
 		fflush();
-		inline = -1;
+		inline = "";
 	}
 	next;
+}
+
+
+/^CON / {
+	if (inline != "") {
+		printf("\n");
+		fflush();
+		inline = "";
+	}
+	printf("CON --- ");
+	printf("%s ", $2);
+	printf("%s\n", $4);
 }
 
 # Default: print the whole line.

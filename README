@@ -1,30 +1,54 @@
 Snoop on a serial line, using two serial ports.
 
-Requires a breakout box that connects in the middle of a serial line, and tees
-the TXD line to RXD on one of the listening serial ports, and RXD to RXD on the
-other listening serial port.
+Requires a breakout box that connects in the middle of a serial line, and
+tees the TXD line to RXD on one of the listening serial ports, and RXD to
+RXD on the other listening serial port, as well as teeing the modem control
+lines in the manner pictured below.
 
-          TXD --------+--------------------------------- TXD
-    DCE               |                                       DTE
-          RXD ----+------------------------------------- RXD
-                  |   |
-          GND ------+----------------------------------- GND
-                  | | |
-                  | | |
-                  | | |
-                  | | |
-                  | | |
-                  | | |
-                  | | |
-  Port 0  RXD ----+ | +------- RXD  Port 1
-                    |
-          GND ------+--------- GND
+                 RXD -------+------------------------- RXD
+    DCE                     |                               DTE
+                 TXD ----------+---------------------- TXD
+                            |  |
+                 CTS -------------+------------------- CTS
+                            |  |  |
+                 RTS ----------------+---------------- RTS
+                            |  |  |  |
+                 DSR -------------------+------------- DSR
+                            |  |  |  |  |
+                 DTR ----------------------+---------- DTR
+                            |  |  |  |  |  |
+                 DCD -------------------------+------- DCD
+                            |  |  |  |  |  |  |
+                 RI  ---------------------------+----- RI
+                            |  |  |  |  |  |  |  |
+                 GND ----+---------------------------- GND
+                         |  |  |  |  |  |  |  |  |
+                         |  |  |  |  |  |  |  |  |
+                         |  |  |  |  |  |  |  |  |
+                         |  |  |  |  |  |  |  |  |
+                         |  |  |  |  |  |  |  |  |
+                         |  |  |  |  |  |  |  |  |
+                         |  |  |  |  |  |  |  |  |
+     Port 0      RXD ----|--+  +---------------------- RXD     Port 1
+  (DCE Monitor)          |        |  |  |  |  |  |          (DTE Monitor)
+                 TXD     |        |  |  |  |  |  |     TXD
+                         |        |  |  |  |  |  |
+                 CTS ----|--------+  +---------------- CTS
+                         |              |  |  |  |
+                 RTS     |              |  |  |  |     RTS
+                         |              |  |  |  |
+                 DSR ----|--------------+  +---------- DSR
+                         |                    |  |
+                 DTR     |                    |  |     DTR
+                         |                    |  |
+                 DCD ----|--------------------+  |     DCD
+                         |                       |
+                 RI  ----|-----------------------+     RI
+                         |
+                 GND ----+---------------------------- GND
 
-There is nothing in the software that forces port 0 to listen to the DCE and
-port 1 to listen to the DTE, and there will be no major difference in the
-program's output if you swap them, except for the port names changing.
-
-(At some stage the software will change to monitor the serial port control
-lines, and then the listening ports will be required to be connected to the DCE
-or DTE in a particular order.)
+The software requires that port 0 (the first port specified on the command
+line) be connected to the DCE monitor port on the breakout box, and port 1
+(the second port specified on the command line) be connected to the DTE
+monitor port.
 
