@@ -21,13 +21,24 @@
 
 #define SS_TIME_FORMAT "%Y-%m-%dT%H:%M:%S"
 
+/* Maximum number of write errors we will accept on one port. */
+#define MAX_WRITE_ERRORS 10
+
+/* Size of write buffers. */
+#define BUFFER_SIZE 64
 
 struct port {
   int number;
   char *name;
   int fd;
+  unsigned int write_errors;
   struct termios t1;
   struct termios t2;
+  unsigned int bytesin;
+  unsigned int bytesout;
+  char pre_sentinel[4];
+  unsigned char buffer[BUFFER_SIZE];
+  char post_sentinel[4];
 };
 
 static struct port port0;
@@ -43,6 +54,14 @@ static int port_stopbits = 1;
 enum outputformat { outTEXT, outXML };
 static enum outputformat outputformat = outTEXT;
 
+
+enum snoop_mode {
+  SNOOPMODE_MONITOR,
+  SNOOPMODE_PASSTHROUGH,
+};
+
+static enum snoop_mode snoop_mode = SNOOPMODE_MONITOR;
+
 static int signal_pipe[2];
 
 static struct timeval starttime;
@@ -57,9 +76,127 @@ usage(void)
   fprintf(stderr, "Usage: %s [options] port0 port1\n", myname);
   fprintf(stderr, "   -p|--port portparams\n");
   fprintf(stderr, "   -f|--format text|xml\n");
+  fprintf(stderr, "   -M|--monitor (default: do not pass data between ports)\n");
+  fprintf(stderr, "   -P|--passthrough (pass data between ports)\n");
   fprintf(stderr, "   -V|--version\n");
   fprintf(stderr, "   portparams defaults to 1200E71\n");
   exit(1);
+}
+
+
+static void
+check_sentinels(struct port *p)
+{
+  if (p->pre_sentinel[0] != 0
+      || p->pre_sentinel[1] != 0
+      || p->pre_sentinel[2] != 0
+      || p->pre_sentinel[3] != 0
+      || p->post_sentinel[0] != 0
+      || p->post_sentinel[1] != 0
+      || p->post_sentinel[2] != 0
+      || p->post_sentinel[3] != 0) {
+    fprintf(stderr, "SENTINEL ERROR on %s\n", p->name);
+    fprintf(stderr, "  PRE : %02x %02x %02x %02x\n",
+            p->pre_sentinel[0], p->pre_sentinel[1],
+            p->pre_sentinel[2], p->pre_sentinel[3]);
+    fprintf(stderr, "  POST: %02x %02x %02x %02x\n",
+            p->post_sentinel[0], p->post_sentinel[1],
+            p->post_sentinel[2], p->post_sentinel[3]);
+    fprintf(stderr, "  BUFFER_SIZE=%d\n", BUFFER_SIZE);
+    fprintf(stderr, "  bytesin  = %u (mod: %u)\n",
+            p->bytesin, p->bytesin  % BUFFER_SIZE);
+    fprintf(stderr, "  bytesout = %u (mod: %u)\n",
+            p->bytesout, p->bytesout % BUFFER_SIZE);
+    exit(99);
+  }
+}
+
+
+static void
+add_buffer_byte(struct port *p, unsigned char c)
+{
+  if ((p->bytesin - p->bytesout) >= BUFFER_SIZE) {
+    fprintf(stderr, "%s: buffer overrun writing to %s\n", myname, p->name);
+    exit(3);
+  }
+  p->buffer[p->bytesin % BUFFER_SIZE] = c;
+  check_sentinels(p);
+  p->bytesin ++;
+}
+
+
+static int
+buffer_has_bytes(struct port *p)
+{
+  return p->bytesout < p->bytesin;
+}
+
+
+static unsigned char
+get_buffer_byte(struct port *p)
+{
+  unsigned char c;
+
+  if (p->bytesin <= p->bytesout) {
+    fprintf(stderr, "%s: buffer underrun on %s\n", myname, p->name);
+    exit(3);
+  }
+  c = p->buffer[p->bytesout % BUFFER_SIZE];
+  p->bytesout ++;
+  return c;
+}
+
+
+static unsigned char
+peek_buffer_byte(struct port *p)
+{
+  if (!buffer_has_bytes(p)) {
+    fprintf(stderr, "Trying to peek into empty buffer\n");
+    exit(3);
+  }
+  return p->buffer[p->bytesout % BUFFER_SIZE];
+}
+
+
+static void
+write_data(struct port *p)
+{
+  unsigned char c;
+  int ret;
+
+  if (! buffer_has_bytes(p)) {
+    fprintf(stderr, "Trying to write from empty buffer\n");
+    return;
+  }
+
+  c = peek_buffer_byte(p);
+  ret = write(p->fd, &c, 1);
+  switch (ret) {
+  case -1:
+    if (errno != EAGAIN) {
+      fprintf(stderr, "%s: cannot write to %s: %s\n", myname, p->name,
+              strerror(errno));
+      p->write_errors ++;
+      if (p->write_errors > MAX_WRITE_ERRORS) {
+        fprintf(stderr, "%s: too many write errors on %s: goodbye\n", myname,
+                p->name);
+        exit(2);
+      }
+    }
+    break;
+  case 0:
+    fprintf(stderr, "%s: 0 write to %s.  Should this happen?\n",
+            myname, p->name);
+    break;
+  case 1:
+    /* Successful write, remove the byte we just wrote. */
+    get_buffer_byte(p);
+    break;
+  default:
+    fprintf(stderr, "%s: %d returned from write to %s.  Why?\n",
+            myname, ret, p->name);
+    break;
+  }
 }
 
 
@@ -178,15 +315,25 @@ port_params(char *params)
 static void
 open_ports(void)
 {
+  int open_mode;
+
+  if (snoop_mode == SNOOPMODE_PASSTHROUGH)
+    open_mode = O_RDWR;
+  else if (snoop_mode == SNOOPMODE_MONITOR)
+    open_mode = O_RDONLY;
+  else {
+    fprintf(stderr, "Unknown snoop_mode: %d\n", snoop_mode);
+    exit(1);
+  }
   if (ssdebug) fprintf(stderr, "Opening %s\n", port0.name);
-  port0.fd = open(port0.name, O_RDONLY|O_NONBLOCK|O_NOCTTY);
+  port0.fd = open(port0.name, open_mode|O_NONBLOCK|O_NOCTTY);
   if (-1 == port0.fd) {
     fprintf(stderr, "%s: cannot open %s: %s\n", myname, port0.name,
             strerror(errno));
     exit(2);
   }
   if (ssdebug) fprintf(stderr, "Opening %s\n", port1.name);
-  port1.fd = open(port1.name, O_RDONLY|O_NONBLOCK|O_NOCTTY);
+  port1.fd = open(port1.name, open_mode|O_NONBLOCK|O_NOCTTY);
   if (-1 == port1.fd) {
     fprintf(stderr, "%s: cannot open %s: %s\n", myname, port1.name,
             strerror(errno));
@@ -236,6 +383,16 @@ setup_port(struct port *p)
             p->name, strerror(errno));
     exit(2);
   }
+
+  p->bytesin  = 0;
+  p->bytesout = 0;
+
+  p->pre_sentinel[0] = p->pre_sentinel[1]
+    = p->pre_sentinel[2] = p->pre_sentinel[3] = 0;
+  p->post_sentinel[0] = p->post_sentinel[1]
+    = p->post_sentinel[2] = p->post_sentinel[3] = 0;
+
+  p->write_errors = 0;
 }
 
 
@@ -244,6 +401,20 @@ setup_ports(void)
 {
   setup_port(&port0);
   setup_port(&port1);
+}
+
+
+static void
+print_trailer(void)
+{
+  switch (outputformat) {
+  case outTEXT:
+    break;
+  case outXML:
+    printf(" </data>\n</capture>\n");
+    break;
+  }
+  fflush(stdout);
 }
 
 
@@ -296,6 +467,8 @@ read_data(struct port *p)
       fprintf(stderr, "EOF on %s\n", p->name);
       exit(0);
     } else if (1 == nread) {
+      if (snoop_mode == SNOOPMODE_PASSTHROUGH)
+        add_buffer_byte(p, c);
       print_byte(p, c);
     } else if (-1 == nread) {
       if (EWOULDBLOCK == errno) {
@@ -350,21 +523,6 @@ print_header(void)
 
 
 static void
-print_trailer(void)
-{
-  switch (outputformat) {
-  case outTEXT:
-    break;
-  case outXML:
-    printf(" </data>\n</capture>\n");
-    break;
-  }
-  fflush(stdout);
-}
-
-
-
-static void
 mainloop(void)
 {
   fd_set rfds;
@@ -382,11 +540,22 @@ mainloop(void)
     FD_ZERO(&xfds);
     maxfdp1 = 0;
     FD_SET(port0.fd, &rfds);
-    if (port0.fd >= maxfdp1) maxfdp1 = port0.fd + 1;
+    if (port0.fd >= maxfdp1)
+      maxfdp1 = port0.fd + 1;
     FD_SET(port1.fd, &rfds);
-    if (port1.fd >= maxfdp1) maxfdp1 = port1.fd + 1;
+    if (port1.fd >= maxfdp1)
+      maxfdp1 = port1.fd + 1;
+    if (snoop_mode == SNOOPMODE_PASSTHROUGH) {
+      if (port0.bytesout < port0.bytesin) {
+        FD_SET(port0.fd, &wfds);
+      }
+      if (port1.bytesout < port1.bytesin) {
+        FD_SET(port1.fd, &wfds);
+      }
+    }
     FD_SET(signal_pipe[0], &rfds);
-    if (signal_pipe[0] >= maxfdp1) maxfdp1 = signal_pipe[0] + 1;
+    if (signal_pipe[0] >= maxfdp1)
+      maxfdp1 = signal_pipe[0] + 1;
     timeout.tv_sec = 0;
     timeout.tv_usec = 10000;
 
@@ -417,6 +586,14 @@ mainloop(void)
       if (FD_ISSET(port1.fd, &rfds)) {
         read_data(&port1);
       }
+      if (snoop_mode == SNOOPMODE_PASSTHROUGH) {
+        if (FD_ISSET(port0.fd, &wfds)) {
+          write_data(&port0);
+        }
+        if (FD_ISSET(port1.fd, &wfds)) {
+          write_data(&port1);
+        }
+      }
       /*FALLTHROUGH*/
     case 0:
       /* Read serial port control lines. */
@@ -446,12 +623,14 @@ setup_signal_handler(void)
 }
 
 
-static const char *opts = "dp:f:V";
+static const char *opts = "dp:f:MPV";
 static const struct option longopts[] = {
   { "debug",  no_argument,       NULL, 'd' },
   { "flush",  no_argument,       NULL, 'F' },
   { "format", required_argument, NULL, 'f' },
   { "param",  required_argument, NULL, 'p' },
+  { "monitor", no_argument,      NULL, 'M' },
+  { "passthrough", no_argument,  NULL, 'P' },
   { "version",no_argument,       NULL, 'V' },
   { 0, 0, 0, 0}
 };
@@ -482,8 +661,14 @@ main(int argc, char **argv)
     case 'F':
       flush_stdout = 1;
       break;
+    case 'M':
+      snoop_mode = SNOOPMODE_MONITOR;
+      break;
     case 'p':
       port_params(optarg);
+      break;
+    case 'P':
+      snoop_mode = SNOOPMODE_PASSTHROUGH;
       break;
     case 'V':
       printf("serialsnoop " SERIALSNOOP_VERSION_STR "\n");

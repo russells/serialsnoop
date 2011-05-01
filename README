@@ -1,5 +1,11 @@
 Snoop on a serial line, using two serial ports.
 
+
+This can work in two ways:
+
+
+1. Monitor only
+
 Requires a breakout box that connects in the middle of a serial line, and tees
 the TXD line to RXD on one of the listening serial ports, and RXD to RXD on the
 other listening serial port.
@@ -24,7 +30,31 @@ There is nothing in the software that forces port 0 to listen to the DCE and
 port 1 to listen to the DTE, and there will be no major difference in the
 program's output if you swap them, except for the port names changing.
 
-(At some stage the software will change to monitor the serial port control
+At some stage the software will change to monitor the serial port control
 lines, and then the listening ports will be required to be connected to the DCE
-or DTE in a particular order.)
+or DTE in a particular order.
 
+
+2. Passthrough
+
+Does not need a breakout box, as data read from one serial port is passed
+through to the other.
+
+
+          TXD -----\ /---------------------------------- TXD
+  Port 1            X                                         DTE
+          RXD -----/ \---------------------------------- RXD
+
+          GND ------------------------------------------ GND
+
+
+          TXD ------------------------------------------ TXD
+  Port 2                                                      DCE
+          RXD ------------------------------------------ RXD
+
+          GND ------------------------------------------ GND
+
+
+Similarly to the Monitor mode, there is nothing that tells you which port to
+connect to the DTE or DCE.  But when we change to monitoring the serial port
+control lines, the ports will be fixed.

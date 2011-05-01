@@ -1,0 +1,9 @@
+From: Russell Steicke <user@eeepc-russellst.(none)>
+Subject: Make serialsnoop optionally operate in a pass-through mode.
+
+The main reason for this is to reduce the hardware requirements for
+operation.  Currently we need a special breakout box with four ports:
+DTE, DCE, DTE monitor and DCE monitor.  In a pass-through mode we need
+only a null modem for one of the ports (plus associated cabling.)
+
+Signed-off-by: Russell Steicke <russells@adelie.cx>
