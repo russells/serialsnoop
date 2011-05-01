@@ -1,0 +1,16 @@
+#!/bin/bash
+# -*- mode:sh; indent-tabs-mode:t; sh-basic-offset:8; -*-
+# Cat a file one line at a time, with short pauses.
+
+if [ $# -eq 0 ] ; then
+	echo "Usage: $0 file [file ...]" 1>&2
+	exit 1
+fi
+
+for file in "$@" ; do
+	cat "$file"
+done | \
+while read LINE ; do
+	echo "$LINE"
+	sleep 0.001  # 1ms
+done

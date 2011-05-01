@@ -1,0 +1,6 @@
+Don't merge this file back into master.
+
+I need to create a sample file of output from serialsnoop.  Then to test
+serialsnoop-gui, run a command to cat that file one line at a time, with a
+slight pause between lines, to simulate running serialsnoop.
+

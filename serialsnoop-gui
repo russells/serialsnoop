@@ -1,0 +1,157 @@
+#!/usr/bin/wish
+#-*- mode:tcl; indent-tabs-mode:nil; -*-
+
+# Interface to run serialsnoop.
+
+set f ""
+set nlines 0
+
+proc runSerialSnoop {speed parity bits stopbits dev0 dev1} {
+    #set cmd "|./serialsnoop -p ${speed}${parity}${bits}${stopbits} ${dev0} ${dev1}"
+    set cmd "|ls"
+    puts stdout $cmd
+    global f
+    global nlines
+    set f [open $cmd]
+    set nlines 0
+    fileevent $f read {
+        if [eof $f] {
+            close $f
+        } else {
+            set l [gets $f]
+            incr nlines
+            .serialtext insert end $l
+            .serialtext insert end "\n"
+            global enteringText
+            set enteringText 1
+            .texts.data0 insert end $l
+            set enteringText 0
+            #puts stdout $l
+            if {$nlines > 3} {close $f}
+        }
+    }
+}
+
+
+#checkbutton .cb \
+#    -text "This is a checkubtton" \
+#    -variable cbvarr
+
+
+## Row with parity.
+frame .p -borderwidth 6
+radiobutton .p.e -variable parity -text "Even" -value E
+radiobutton .p.o -variable parity -text "Odd"  -value O
+radiobutton .p.n -variable parity -text "None" -value N
+label .p.t -text "Parity:"
+grid configure .p.t -row 0 -column 0 -sticky sewn
+grid configure .p.e -row 0 -column 1 -sticky sewn
+grid configure .p.o -row 0 -column 2 -sticky sewn
+grid configure .p.n -row 0 -column 3 -sticky sewn
+
+set parity E
+
+
+## Row with speed.
+frame .s -borderwidth 6
+label .s.t -text "Speed:"
+ttk::combobox .s.speeds -state readonly \
+    -values [ list 300 1200 2400 4800 9600 19200 38400 ]
+grid configure .s.t      -row 0 -column 0 -sticky sewn
+grid configure .s.speeds -row 0 -column 1 -sticky sewn
+
+.s.speeds set 1200
+
+
+## Row with bits.
+frame .b -borderwidth 6
+label .b.t -text "Bits:"
+radiobutton .b.b7 -variable bits -value 7 -text Seven
+radiobutton .b.b8 -variable bits -value 8 -text Eight
+grid configure .b.t  -row 0 -column 0 -sticky sewn
+grid configure .b.b7 -row 0 -column 1 -sticky sewn
+grid configure .b.b8 -row 0 -column 2 -sticky sewn
+
+set bits 7
+
+## Row with stop bits.
+frame .sb -borderwidth 6
+label .sb.t -text "Stop bits:"
+radiobutton .sb.b1 -variable stopbits -value 1 -text "1"
+radiobutton .sb.b2 -variable stopbits -value 2 -text "2"
+grid configure .sb.t  -row 0 -column 0 -sticky sewn
+grid configure .sb.b1 -row 0 -column 1 -sticky sewn
+grid configure .sb.b2 -row 0 -column 2 -sticky sewn
+set stopbits 1
+
+
+## Row with devices.
+set devices [lsort [glob /dev/ttyS* /dev/ttyUSB*]]
+frame .d -borderwidth 6
+label .d.t0 -text "Device 0:"
+ttk::combobox .d.device0 -state readonly -values $devices
+.d.device0 set [lindex $devices 0]
+label .d.t1 -text "Device 1:"
+ttk::combobox .d.device1 -state readonly -values $devices
+.d.device1 set [lindex $devices 1]
+grid configure .d.t0      -row 0 -column 0 -sticky sewn
+grid configure .d.device0 -row 0 -column 2 -sticky sewn
+grid configure .d.t1      -row 0 -column 4 -sticky sewn
+grid configure .d.device1 -row 0 -column 5 -sticky sewn
+grid columnconfigure .d {3} -minsize 40
+grid columnconfigure .d {6} -weight 1
+
+
+## Row with buttons.
+frame .buttons -borderwidth 6
+button .buttons.run -text Run \
+    -command {
+        runSerialSnoop [.s.speeds get] $parity $bits $stopbits [.d.device0 get] [.d.device1 get]
+    }
+button .buttons.exit -text Exit \
+    -command {exit}
+grid .buttons.run   -row 0 -column 0 -sticky sewn
+grid .buttons.exit  -row 0 -column 1 -sticky sewn
+
+
+## Text box.
+text .serialtext -background white
+
+
+## Called when an edit box is edited.
+proc validateEntry {} {
+    global enteringText
+    #puts stdout "enteringText == $enteringText"
+    if $enteringText { return 1 } { return 0 }
+}
+
+set enteringText 1
+
+## Text boxes for serial data.
+frame .texts
+label .texts.data0Label -text "Device 0:"
+entry .texts.data0 -font Courier -validate key -validatecommand validateEntry
+label .texts.data1Label -text "Device 1:"
+entry .texts.data1 -font Courier -validate key -validatecommand validateEntry
+grid .texts.data0Label -row 0 -column 0
+grid .texts.data0      -row 0 -column 1 -sticky sewn
+grid .texts.data1Label -row 1 -column 0
+grid .texts.data1      -row 1 -column 1 -sticky sewn
+grid columnconfigure .texts {1} -weight 1
+.texts.data0 insert end "\r\n"
+
+
+## Place them all.
+grid .s          -row 0 -column 0 -sticky news
+grid .p          -row 0 -column 1 -sticky news
+grid .b          -row 1 -column 0 -sticky news
+grid .sb         -row 1 -column 1 -sticky news
+grid .d          -row 2 -column 0 -sticky news -columnspan 2
+grid .serialtext -row 3 -column 0 -sticky sewn -columnspan 2
+grid .texts      -row 4 -column 0 -sticky sewn -columnspan 2
+grid .buttons    -row 5 -column 0 -sticky news -columnspan 2
+
+#grid rowconfigure    . {0 1 2 3 4 5 6} -weight 1 -minsize 40
+grid rowconfigure    . {3} -weight 1 -minsize 40
+grid columnconfigure . {0 1}       -weight 1 -minsize 40
+set enteringText 0
